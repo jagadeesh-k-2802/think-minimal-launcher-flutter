@@ -18,7 +18,8 @@
 - 🌙 Dark Mode Support with (Auto/Light/Dark) options.
 - ☀️ Weather support with custom OpenWeather API Key.
 - 🌟 Third party theme support.
-- 🌄 Wallpaper with blur support.
+- 🌄 Wallpaper with blur & opacity support.
+- 🔗 Android App Shortcuts support.
 - 📂 Organize apps into folders.
 - 💾 Backup & restore settings.
 - ⚙️ Granular customizable preferences.
