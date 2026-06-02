@@ -998,7 +998,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                             theme.colorScheme.onSurface,
                                         overlayColor: Colors.transparent,
                                         showValueIndicator:
-                                            ShowValueIndicator.always,
+                                            ShowValueIndicator.onDrag,
                                       ),
                                       child: Slider(
                                         value: wallpaperBlur,
@@ -1095,7 +1095,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                             theme.colorScheme.onSurface,
                                         overlayColor: Colors.transparent,
                                         showValueIndicator:
-                                            ShowValueIndicator.always,
+                                            ShowValueIndicator.onDrag,
                                       ),
                                       child: Slider(
                                         value: wallpaperOpacity,

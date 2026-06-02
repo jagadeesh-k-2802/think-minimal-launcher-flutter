@@ -1,7 +1,9 @@
 package com.jackappsdev.think_minimal_launcher
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
 import android.content.pm.ShortcutInfo
@@ -9,6 +11,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.os.Build
 import android.os.PowerManager
 import android.os.UserHandle
 import android.os.UserManager
@@ -28,6 +31,17 @@ class MainActivity : FlutterActivity() {
 
     private var pendingShortcuts = mutableListOf<Map<String, Any>>()
     private var methodChannel: MethodChannel? = null
+    private var packageRemovedReceiverRegistered = false
+    private val packageRemovedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != Intent.ACTION_PACKAGE_REMOVED) return
+            if (intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return
+            val packageName = intent.data?.schemeSpecificPart ?: return
+            runOnUiThread {
+                methodChannel?.invokeMethod("onPackageRemoved", packageName)
+            }
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -124,7 +138,20 @@ class MainActivity : FlutterActivity() {
             }
 
         // Process startup intent if launched to pin a shortcut
+        registerPackageRemovedReceiver()
         handleIntent(intent)
+    }
+
+    override fun onDestroy() {
+        if (packageRemovedReceiverRegistered) {
+            try {
+                unregisterReceiver(packageRemovedReceiver)
+            } catch (_: Exception) {
+            }
+            packageRemovedReceiverRegistered = false
+        }
+        methodChannel = null
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -149,12 +176,16 @@ class MainActivity : FlutterActivity() {
                     val packageName = shortcutInfo.getPackage()
                     val iconDrawable = launcherApps.getShortcutIconDrawable(shortcutInfo, resources.displayMetrics.densityDpi)
                     val iconBytes = iconDrawableToByteArray(iconDrawable)
+                    val sourceAppName = getAppLabel(packageName)
+                    val sourceIconBytes = getAppIconBytes(packageName)
 
                     val shortcutData = mapOf(
                         "id" to id,
                         "packageName" to packageName,
                         "label" to label,
-                        "iconBytes" to (iconBytes ?: ByteArray(0))
+                        "iconBytes" to (iconBytes ?: ByteArray(0)),
+                        "sourceAppName" to sourceAppName,
+                        "sourceIconBytes" to (sourceIconBytes ?: ByteArray(0))
                     )
 
                     synchronized(pendingShortcuts) {
@@ -269,6 +300,39 @@ class MainActivity : FlutterActivity() {
         } catch (e: Exception) {
             return null
         }
+    }
+
+    private fun getAppLabel(packageName: String): String {
+        return try {
+            val appInfo = packageManager.getApplicationInfo(packageName, 0)
+            packageManager.getApplicationLabel(appInfo).toString()
+        } catch (_: Exception) {
+            packageName
+        }
+    }
+
+    private fun getAppIconBytes(packageName: String): ByteArray? {
+        return try {
+            iconDrawableToByteArray(packageManager.getApplicationIcon(packageName))
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun registerPackageRemovedReceiver() {
+        if (packageRemovedReceiverRegistered) return
+
+        val filter = IntentFilter(Intent.ACTION_PACKAGE_REMOVED).apply {
+            addDataScheme("package")
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(packageRemovedReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(packageRemovedReceiver, filter)
+        }
+        packageRemovedReceiverRegistered = true
     }
 
     private fun wakeScreen(seconds: Int) {

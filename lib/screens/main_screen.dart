@@ -305,11 +305,19 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
       _shortcutChannel.setMethodCallHandler((call) async {
         if (call.method == 'onShortcutPinned') {
-          await _handleNewPinnedShortcut(Map<String, dynamic>.from(call.arguments));
+          await _handleNewPinnedShortcut(
+            Map<String, dynamic>.from(call.arguments),
+          );
+        } else if (call.method == 'onPackageRemoved') {
+          final packageName = call.arguments as String?;
+          if (packageName != null && packageName.isNotEmpty) {
+            await _handlePackageRemoved(packageName);
+          }
         }
       });
 
       _checkPendingShortcuts();
+      _ensureShortcutSourceMetadata();
     });
 
     _setupTimers();
@@ -320,7 +328,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   void _initializeState() {
-    _selectedApps = widget.prefs.getStringList('selectedApps') ?? [];
+    _loadSelectedApps();
     _numApps = widget.prefs.getInt('numApps') ?? 5;
     _loadFolders();
     _loadNotifications();
@@ -335,17 +343,18 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _clockFontSize = widget.prefs.getDouble('clockFontSize') ?? 18.0;
     _appIconSize = widget.prefs.getDouble('appIconSize') ?? 18.0;
     _use24HourClock = widget.prefs.getBool('use24HourClock') ?? false;
-    final timeFormatter =
-        DateFormat(_use24HourClock ? 'HH:mm' : 'h:mm a');
+    final timeFormatter = DateFormat(_use24HourClock ? 'HH:mm' : 'h:mm a');
     _currentTime = timeFormatter.format(DateTime.now());
     _currentDate = _dateFormatter.format(DateTime.now());
     _batteryLevel = 0;
     _wallpaperPath = widget.prefs.getString('wallpaperPath');
     _wallpaperBlur = widget.prefs.getDouble('wallpaperBlur') ?? 0.0;
+    _wallpaperOpacity = widget.prefs.getDouble('wallpaperOpacity') ?? 1.0;
     _weatherAppPackageName = widget.prefs.getString('weatherAppPackageName');
-    _appAlignment = appAlignmentFromStorage(widget.prefs.getString('appAlignment'));
+    _appAlignment =
+        appAlignmentFromStorage(widget.prefs.getString('appAlignment'));
     _appTheme = appThemeModeFromStorage(widget.prefs.getString('appTheme'));
-    
+
     _weatherApiKey = widget.prefs.getString('weatherApiKey');
     _iconPackPackageName = widget.prefs.getString('iconPackPackageName');
 
@@ -358,6 +367,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   void _setupWeatherService() {
     _weatherService = WeatherService(apiKey: _weatherApiKey ?? '');
     _updateWeather();
+  }
+
+  void _loadSelectedApps() {
+    _selectedApps = widget.prefs.getStringList('selectedApps') ?? [];
   }
 
   void _setupTimers() {
@@ -465,6 +478,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   void _loadData() {
+    _loadSelectedApps();
     _loadFolders();
     _buildAppList();
     _loadNotifications();
@@ -619,18 +633,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
     try {
       // Load apps in parallel for better performance
-      final futures = _selectedApps
+      final packageNamesToLoad = _selectedApps
           .where((packageName) => !_appInfoCache.containsKey(packageName))
-          .map((packageName) => _getAppInfo(packageName));
+          .toList();
+      final futures =
+          packageNamesToLoad.map((packageName) => _getAppInfo(packageName));
 
       // Wait for all app info to load
       final results = await Future.wait(futures, eagerError: true);
 
       // Remove any null results (uninstalled apps)
       final uninstalledApps = <String>[];
-      for (int i = 0; i < _selectedApps.length; i++) {
+      for (int i = 0; i < packageNamesToLoad.length; i++) {
         if (results[i] == null) {
-          uninstalledApps.add(_selectedApps[i]);
+          uninstalledApps.add(packageNamesToLoad[i]);
         }
       }
 
@@ -664,7 +680,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       // Check shortcuts as well
       final shortcutsToRemove = <ShortcutInfo>[];
       for (final shortcut in _shortcuts) {
-        final isInstalled = await InstalledApps.isAppInstalled(shortcut.packageName);
+        if (uninstalledApps.contains(shortcut.packageName)) {
+          shortcutsToRemove.add(shortcut);
+          continue;
+        }
+
+        final isInstalled =
+            await InstalledApps.isAppInstalled(shortcut.packageName);
         if (isInstalled == false) {
           shortcutsToRemove.add(shortcut);
         }
@@ -702,7 +724,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 .toList();
 
             if (oldLength != newAppPackageNames.length) {
-              _folders[i] = folder.copyWith(appPackageNames: newAppPackageNames);
+              _folders[i] =
+                  folder.copyWith(appPackageNames: newAppPackageNames);
               foldersChanged = true;
             }
           }
@@ -726,15 +749,17 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         // Clean up shortcuts
         if (shortcutsToRemove.isNotEmpty) {
           for (final shortcut in shortcutsToRemove) {
-            _shortcuts.removeWhere((s) => s.id == shortcut.id && s.packageName == shortcut.packageName);
-            
+            _shortcuts.removeWhere((s) =>
+                s.id == shortcut.id && s.packageName == shortcut.packageName);
+
             // Delete icon file
             try {
               if (_appDocsDirPath != null) {
-                final file = File('$_appDocsDirPath/shortcut_icons/${shortcut.packageName}_${shortcut.id}.png');
+                final file = File(_shortcutIconPath(shortcut));
                 if (file.existsSync()) {
                   file.deleteSync();
                 }
+                _deleteShortcutSourceIconIfUnused(shortcut.packageName);
               }
             } catch (_) {}
           }
@@ -767,6 +792,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         break;
     }
     return isLight ? Colors.black : Colors.white;
+  }
+
+  Color _getWallpaperEffectiveColor(Color wallpaperColor) {
+    final clampedOpacity = _wallpaperOpacity.clamp(0.0, 1.0).toDouble();
+    return Color.alphaBlend(
+      wallpaperColor.withValues(alpha: clampedOpacity),
+      Colors.black,
+    );
+  }
+
+  Color _getContrastingOverlayTextColor(Color backgroundColor) {
+    final luminance = backgroundColor.computeLuminance();
+    final blackContrast = (luminance + 0.05) / 0.05;
+    final whiteContrast = 1.05 / (luminance + 0.05);
+    return blackContrast >= whiteContrast ? Colors.black : Colors.white;
   }
 
   /// Refreshes app info cache for a specific app
@@ -836,7 +876,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           _showIcons != settings['showIcons'] ||
           _colorMode != settings['colorMode'] ||
           _showStatusBar != settings['showStatusBar'] ||
-          !listEquals(_selectedApps, settings['selectedApps'] as List<String>) ||
+          !listEquals(
+              _selectedApps, settings['selectedApps'] as List<String>) ||
           _appIconSize != settings['appIconSize'] ||
           _wallpaperPath != settings['wallpaperPath'] ||
           _showFolderChevron != settings['showFolderChevron'] ||
@@ -850,6 +891,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
       if (hasChanges) {
         // Update all state at once to minimize rebuilds
+        final newSelectedApps =
+            List<String>.from(settings['selectedApps'] as List<String>);
+        final selectedAppsChanged = !listEquals(_selectedApps, newSelectedApps);
+
         setState(() {
           _numApps = settings['numApps'] as int;
           _showSearchButton = settings['showSearchButton'] as bool;
@@ -861,7 +906,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           _colorMode = settings['colorMode'] as bool;
           _showFolderChevron = settings['showFolderChevron'] as bool;
           _showStatusBar = settings['showStatusBar'] as bool;
-          _selectedApps = List.from(settings['selectedApps'] as List<String>);
+          _selectedApps = newSelectedApps;
           _appIconSize = settings['appIconSize'] as double;
           _wallpaperPath = settings['wallpaperPath'] as String?;
           _wallpaperBlur = settings['wallpaperBlur'] as double;
@@ -880,7 +925,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         );
 
         // Only reload app info if selected apps changed
-        if (!listEquals(_selectedApps, settings['selectedApps'] as List<String>)) {
+        if (selectedAppsChanged) {
           _appInfoCache.clear();
           await _preloadAppInfo();
 
@@ -979,10 +1024,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         maximumColorCount: 12,
       );
       final bg = palette.dominantColor?.color ?? Colors.white;
-      // Compute luminance and choose contrasting color
-      final double luminance = bg.computeLuminance();
+      final effectiveBg = _getWallpaperEffectiveColor(bg);
       setState(() {
-        _overlayTextColor = luminance > 0.6 ? Colors.black : Colors.white;
+        _overlayTextColor = _getContrastingOverlayTextColor(effectiveBg);
         _wallpaperProvider = imageProvider;
         _isPreparingWallpaper = false;
       });
@@ -1073,6 +1117,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   Future<void> _reloadData() async {
     // Reload all state
+    _loadSelectedApps();
     await _loadSettings();
     _loadFolders();
     _loadShortcuts();
@@ -1272,7 +1317,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     int unorganizedIndex = 0;
 
     for (final item in orderedItems) {
-      int targetOrder = item is Folder ? item.order : (item as ShortcutInfo).order;
+      int targetOrder =
+          item is Folder ? item.order : (item as ShortcutInfo).order;
 
       // Fill in unorganized apps until we reach this item's order index
       while (currentIndex < targetOrder &&
@@ -1926,15 +1972,113 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       setState(() {
         _shortcuts = decoded.map((s) => ShortcutInfo.fromJson(s)).toList();
       });
+      if (_appDocsDirPath != null) {
+        _ensureShortcutSourceMetadata();
+      }
     } catch (e) {
       debugPrint('Error loading shortcuts: $e');
       _shortcuts = [];
     }
   }
 
+  Future<void> _handlePackageRemoved(String packageName) async {
+    await _cleanupUninstalledApps([packageName]);
+  }
+
+  String _shortcutIconPath(ShortcutInfo shortcut) {
+    return '$_appDocsDirPath/shortcut_icons/${shortcut.packageName}_${shortcut.id}.png';
+  }
+
+  String _shortcutSourceIconPath(String packageName) {
+    return '$_appDocsDirPath/shortcut_source_icons/$packageName.png';
+  }
+
+  Future<void> _writeShortcutImageBytes({
+    required String directoryName,
+    required String fileName,
+    required Uint8List bytes,
+  }) async {
+    if (bytes.isEmpty) return;
+
+    final appDocsDir = await getApplicationDocumentsDirectory();
+    _appDocsDirPath ??= appDocsDir.path;
+
+    final iconDir = Directory('${appDocsDir.path}/$directoryName');
+    if (!await iconDir.exists()) {
+      await iconDir.create(recursive: true);
+    }
+
+    final iconFile = File('${iconDir.path}/$fileName');
+    await iconFile.writeAsBytes(bytes);
+  }
+
+  void _deleteShortcutSourceIconIfUnused(String packageName) {
+    if (_appDocsDirPath == null) return;
+    if (_shortcuts.any((shortcut) => shortcut.packageName == packageName)) {
+      return;
+    }
+
+    final sourceIconFile = File(_shortcutSourceIconPath(packageName));
+    if (sourceIconFile.existsSync()) {
+      sourceIconFile.deleteSync();
+    }
+  }
+
+  Future<void> _ensureShortcutSourceMetadata() async {
+    if (_appDocsDirPath == null || _shortcuts.isEmpty) return;
+
+    var shortcutsChanged = false;
+    var iconsChanged = false;
+    final updatedShortcuts = List<ShortcutInfo>.from(_shortcuts);
+
+    for (var i = 0; i < updatedShortcuts.length; i++) {
+      final shortcut = updatedShortcuts[i];
+      final sourceIconFile =
+          File(_shortcutSourceIconPath(shortcut.packageName));
+
+      if (shortcut.sourceAppName != null && sourceIconFile.existsSync()) {
+        continue;
+      }
+
+      try {
+        final app = await InstalledApps.getAppInfo(shortcut.packageName);
+        final appInfo = AppInfo.fromInstalledApps(app);
+
+        if (!sourceIconFile.existsSync() && appInfo.icon != null) {
+          await _writeShortcutImageBytes(
+            directoryName: 'shortcut_source_icons',
+            fileName: '${shortcut.packageName}.png',
+            bytes: appInfo.icon!,
+          );
+          iconsChanged = true;
+        }
+
+        if (appInfo.name.isNotEmpty && shortcut.sourceAppName != appInfo.name) {
+          updatedShortcuts[i] = shortcut.copyWith(sourceAppName: appInfo.name);
+          shortcutsChanged = true;
+        }
+      } catch (e) {
+        debugPrint(
+            'Error resolving shortcut source ${shortcut.packageName}: $e');
+      }
+    }
+
+    if (!mounted) return;
+
+    if (shortcutsChanged) {
+      setState(() {
+        _shortcuts = updatedShortcuts;
+      });
+      _saveShortcuts();
+    } else if (iconsChanged) {
+      setState(() {});
+    }
+  }
+
   Future<void> _checkPendingShortcuts() async {
     try {
-      final List<dynamic>? pending = await _shortcutChannel.invokeMethod('getPendingShortcuts');
+      final List<dynamic>? pending =
+          await _shortcutChannel.invokeMethod('getPendingShortcuts');
       if (pending != null && pending.isNotEmpty) {
         for (final item in pending) {
           await _handleNewPinnedShortcut(Map<String, dynamic>.from(item));
@@ -1950,16 +2094,27 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     final String packageName = data['packageName'];
     final String label = data['label'];
     final Uint8List iconBytes = data['iconBytes'];
+    final sourceAppName = data['sourceAppName'] as String?;
+    final sourceIconBytes = data['sourceIconBytes'] as Uint8List?;
+    final resolvedSourceAppName =
+        sourceAppName != null && sourceAppName.isNotEmpty
+            ? sourceAppName
+            : null;
 
     // Save icon to local file
     try {
-      final appDocsDir = await getApplicationDocumentsDirectory();
-      final iconDir = Directory('${appDocsDir.path}/shortcut_icons');
-      if (!await iconDir.exists()) {
-        await iconDir.create(recursive: true);
+      await _writeShortcutImageBytes(
+        directoryName: 'shortcut_icons',
+        fileName: '${packageName}_$id.png',
+        bytes: iconBytes,
+      );
+      if (sourceIconBytes != null && sourceIconBytes.isNotEmpty) {
+        await _writeShortcutImageBytes(
+          directoryName: 'shortcut_source_icons',
+          fileName: '$packageName.png',
+          bytes: sourceIconBytes,
+        );
       }
-      final iconFile = File('${iconDir.path}/${packageName}_$id.png');
-      await iconFile.writeAsBytes(iconBytes);
     } catch (e) {
       debugPrint('Error saving shortcut icon: $e');
     }
@@ -1967,12 +2122,18 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // Add to shortcuts list
     setState(() {
       // Check if already exists, if so update it
-      final existingIndex = _shortcuts.indexWhere((s) => s.id == id && s.packageName == packageName);
+      final existingIndex = _shortcuts
+          .indexWhere((s) => s.id == id && s.packageName == packageName);
       if (existingIndex != -1) {
-        _shortcuts[existingIndex] = _shortcuts[existingIndex].copyWith(
+        var updatedShortcut = _shortcuts[existingIndex].copyWith(
           displayName: label,
           label: label,
         );
+        if (resolvedSourceAppName != null) {
+          updatedShortcut =
+              updatedShortcut.copyWith(sourceAppName: resolvedSourceAppName);
+        }
+        _shortcuts[existingIndex] = updatedShortcut;
       } else {
         // Find max order to place it at the end
         int maxOrder = -1;
@@ -1987,11 +2148,16 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           packageName: packageName,
           displayName: label,
           label: label,
+          sourceAppName: resolvedSourceAppName,
           order: maxOrder + 1,
         ));
       }
       _saveShortcuts();
     });
+
+    if (sourceIconBytes == null || sourceIconBytes.isEmpty) {
+      await _ensureShortcutSourceMetadata();
+    }
   }
 
   void _saveShortcuts() {
@@ -2017,33 +2183,55 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     final result = await showDialog<String>(
       context: context,
       builder: (BuildContext context) {
+        final localizations = AppLocalizations.of(context)!;
         return AlertDialog(
-          title: Text(
-            shortcut.name,
-            style: const TextStyle(fontSize: 20),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                shortcut.name,
+                style: const TextStyle(fontSize: 20),
+              ),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.link, size: 14),
+                  const SizedBox(width: 6),
+                  Text(
+                    shortcut.sourceAppName != null &&
+                            shortcut.sourceAppName!.isNotEmpty
+                        ? localizations.shortcutFromApp(shortcut.sourceAppName!)
+                        : localizations.shortcut,
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                ],
+              ),
+            ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
                 leading: const Icon(Icons.edit),
-                title: Text(AppLocalizations.of(context)!.renameApp),
+                title: Text(localizations.renameShortcut),
                 onTap: () => Navigator.pop(context, 'rename'),
               ),
               if (shortcut.customName != null)
                 ListTile(
                   leading: const Icon(Icons.refresh),
-                  title: Text(AppLocalizations.of(context)!.resetAppName),
+                  title: Text(localizations.resetShortcutName),
                   onTap: () => Navigator.pop(context, 'reset'),
                 ),
               ListTile(
                 leading: const Icon(Icons.delete_outline),
-                title: Text(AppLocalizations.of(context)!.removeWallpaper), // We reuse the "Remove" wording
+                title: Text(localizations.removeShortcut),
                 onTap: () => Navigator.pop(context, 'remove'),
               ),
               ListTile(
                 leading: const Icon(Icons.reorder),
-                title: Text(AppLocalizations.of(context)!.reOrderApps),
+                title: Text(localizations.reorderHomeScreen),
                 onTap: () => Navigator.pop(context, 'reorder'),
               ),
             ],
@@ -2060,9 +2248,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         final newName = await _showRenameShortcutDialog(shortcut);
         if (newName != null && newName.trim().isNotEmpty) {
           setState(() {
-            final index = _shortcuts.indexWhere((s) => s.id == shortcut.id && s.packageName == shortcut.packageName);
+            final index = _shortcuts.indexWhere((s) =>
+                s.id == shortcut.id && s.packageName == shortcut.packageName);
             if (index != -1) {
-              _shortcuts[index] = _shortcuts[index].copyWith(customName: newName.trim());
+              _shortcuts[index] =
+                  _shortcuts[index].copyWith(customName: newName.trim());
               _saveShortcuts();
             }
           });
@@ -2070,7 +2260,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         break;
       case 'reset':
         setState(() {
-          final index = _shortcuts.indexWhere((s) => s.id == shortcut.id && s.packageName == shortcut.packageName);
+          final index = _shortcuts.indexWhere((s) =>
+              s.id == shortcut.id && s.packageName == shortcut.packageName);
           if (index != -1) {
             _shortcuts[index] = _shortcuts[index].copyWith(customName: null);
             _saveShortcuts();
@@ -2102,7 +2293,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text(AppLocalizations.of(context)!.renameApp),
+          title: Text(AppLocalizations.of(context)!.renameShortcut),
           content: TextField(
             controller: controller,
             autofocus: true,
@@ -2127,7 +2318,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   Future<void> _removeShortcut(ShortcutInfo shortcut) async {
     setState(() {
-      _shortcuts.removeWhere((s) => s.id == shortcut.id && s.packageName == shortcut.packageName);
+      _shortcuts.removeWhere(
+          (s) => s.id == shortcut.id && s.packageName == shortcut.packageName);
       _saveShortcuts();
     });
 
@@ -2144,10 +2336,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // Delete icon file
     try {
       if (_appDocsDirPath != null) {
-        final file = File('$_appDocsDirPath/shortcut_icons/${shortcut.packageName}_${shortcut.id}.png');
+        final file = File(_shortcutIconPath(shortcut));
         if (file.existsSync()) {
           file.deleteSync();
         }
+        _deleteShortcutSourceIconIfUnused(shortcut.packageName);
       }
     } catch (e) {
       debugPrint('Error deleting shortcut icon file: $e');
@@ -2177,8 +2370,116 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildShortcutIcon(ShortcutInfo shortcut) {
+    final iconPath = _appDocsDirPath != null ? _shortcutIconPath(shortcut) : '';
+    final iconFile = File(iconPath);
+    final baseIcon = iconPath.isNotEmpty && iconFile.existsSync()
+        ? Image.file(
+            iconFile,
+            width: _appIconSize,
+            height: _appIconSize,
+            cacheHeight: _appIconSize.toInt(),
+            cacheWidth: _appIconSize.toInt(),
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+          )
+        : Icon(
+            Icons.link,
+            size: _appIconSize * 0.7,
+            color: Colors.black,
+          );
+    final renderedIcon = _colorMode
+        ? baseIcon
+        : ColorFiltered(
+            colorFilter: const ColorFilter.matrix([
+              0.2126,
+              0.7152,
+              0.0722,
+              0,
+              0,
+              0.2126,
+              0.7152,
+              0.0722,
+              0,
+              0,
+              0.2126,
+              0.7152,
+              0.0722,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+            ]),
+            child: baseIcon,
+          );
+
+    return _buildShortcutIconWithSourceBadge(shortcut, renderedIcon);
+  }
+
+  Widget _buildShortcutIconWithSourceBadge(
+    ShortcutInfo shortcut,
+    Widget baseIcon,
+  ) {
+    final sourceIconPath = _appDocsDirPath != null
+        ? _shortcutSourceIconPath(shortcut.packageName)
+        : '';
+    final sourceIconFile = File(sourceIconPath);
+    final hasSourceIcon =
+        sourceIconPath.isNotEmpty && sourceIconFile.existsSync();
+    final badgeSize = (_appIconSize * 0.52).clamp(10.0, 18.0).toDouble();
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        ClipOval(
+          child: SizedBox(
+            width: _appIconSize,
+            height: _appIconSize,
+            child: baseIcon,
+          ),
+        ),
+        if (hasSourceIcon)
+          Positioned(
+            right: -2,
+            bottom: -2,
+            child: Container(
+              width: badgeSize + 4,
+              height: badgeSize + 4,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+                border: Border.all(color: Colors.white, width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withAlpha(45),
+                    blurRadius: 2,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: ClipOval(
+                child: Image.file(
+                  sourceIconFile,
+                  width: badgeSize,
+                  height: badgeSize,
+                  cacheHeight: badgeSize.ceil(),
+                  cacheWidth: badgeSize.ceil(),
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _buildListShortcutItem(ShortcutInfo shortcut) {
     final textAlign = _getAppTextAlign();
+    final localizations = AppLocalizations.of(context)!;
 
     final textContent = Text(
       shortcut.name,
@@ -2214,44 +2515,20 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                         shape: BoxShape.circle,
                         color: Colors.white,
                       ),
-                      child: ClipOval(
-                        child: Builder(
-                          builder: (context) {
-                            final iconPath = _appDocsDirPath != null
-                                ? '$_appDocsDirPath/shortcut_icons/${shortcut.packageName}_${shortcut.id}.png'
-                                : '';
-                            final iconFile = File(iconPath);
-                            final imageWidget = iconPath.isNotEmpty && iconFile.existsSync()
-                                ? Image.file(
-                                    iconFile,
-                                    width: _appIconSize,
-                                    height: _appIconSize,
-                                    cacheHeight: _appIconSize.toInt(),
-                                    cacheWidth: _appIconSize.toInt(),
-                                    fit: BoxFit.cover,
-                                    gaplessPlayback: true,
-                                  )
-                                : Icon(
-                                    Icons.link,
-                                    size: _appIconSize * 0.7,
-                                    color: Colors.black,
-                                  );
-                            return _colorMode
-                                ? imageWidget
-                                : ColorFiltered(
-                                    colorFilter: const ColorFilter.matrix([
-                                      0.2126, 0.7152, 0.0722, 0, 0,
-                                      0.2126, 0.7152, 0.0722, 0, 0,
-                                      0.2126, 0.7152, 0.0722, 0, 0,
-                                      0,      0,      0,      1, 0,
-                                    ]),
-                                    child: imageWidget,
-                                  );
-                          },
-                        ),
+                      child: Builder(
+                        builder: (context) => _buildShortcutIcon(shortcut),
                       ),
                     ),
                   ),
+                if (!_showIcons) ...[
+                  Icon(
+                    Icons.link,
+                    size: (_appFontSize * 0.72).clamp(12.0, 18.0).toDouble(),
+                    color: _overlayTextColor.withAlpha(180),
+                    semanticLabel: localizations.shortcut,
+                  ),
+                  const SizedBox(width: 8.0),
+                ],
                 Flexible(
                   child: textContent,
                 ),

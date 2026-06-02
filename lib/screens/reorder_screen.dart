@@ -135,7 +135,8 @@ class _ReorderAppsScreenState extends State<ReorderAppsScreen> {
 
         final shortcutsJson = widget.prefs.getString('shortcuts') ?? '[]';
         final List<dynamic> decodedShortcuts = jsonDecode(shortcutsJson);
-        _shortcuts = decodedShortcuts.map((s) => ShortcutInfo.fromJson(s)).toList();
+        _shortcuts =
+            decodedShortcuts.map((s) => ShortcutInfo.fromJson(s)).toList();
 
         // Map packageName → appInfo
         final appMap = _appInfoCache;
@@ -164,7 +165,8 @@ class _ReorderAppsScreenState extends State<ReorderAppsScreen> {
         int unorganizedIndex = 0;
 
         for (final item in orderedItems) {
-          int targetOrder = item is Folder ? item.order : (item as ShortcutInfo).order;
+          int targetOrder =
+              item is Folder ? item.order : (item as ShortcutInfo).order;
 
           if (item is Folder && item.appPackageNames.isEmpty) {
             continue;
@@ -239,7 +241,8 @@ class _ReorderAppsScreenState extends State<ReorderAppsScreen> {
           var appInfo = AppInfo.fromInstalledApps(app);
 
           // Apply icon pack override if configured
-          appInfo = await IconPackService.applyIconPackToApp(appInfo, widget.prefs);
+          appInfo =
+              await IconPackService.applyIconPackToApp(appInfo, widget.prefs);
           final customNamesJson =
               widget.prefs.getString('customAppNames') ?? '{}';
           final customNames =
@@ -323,11 +326,6 @@ class _ReorderAppsScreenState extends State<ReorderAppsScreen> {
                 .map((f) => Folder.fromJson(f))
                 .toList();
 
-        final currentShortcuts =
-            (jsonDecode(widget.prefs.getString('shortcuts') ?? '[]') as List)
-                .map((s) => ShortcutInfo.fromJson(s))
-                .toList();
-
         // Create a map of folder ID to its contents
         final folderContents = {
           for (var folder in currentFolders) folder.id: folder.appPackageNames
@@ -336,35 +334,43 @@ class _ReorderAppsScreenState extends State<ReorderAppsScreen> {
         // Go through the reordered items list, update order indices
         final List<Folder> reorderedFolders = [];
         final List<ShortcutInfo> reorderedShortcuts = [];
+        final previousSelectedApps =
+            widget.prefs.getStringList('selectedApps') ?? [];
+        final List<String> allAppPackageNames = [];
+        final Set<String> seenAppPackageNames = {};
+
+        void addAppPackageName(String packageName) {
+          if (seenAppPackageNames.add(packageName)) {
+            allAppPackageNames.add(packageName);
+          }
+        }
 
         for (int i = 0; i < _items.length; i++) {
           final item = _items[i];
           if (item.type == ReorderableItemType.folder) {
             final folder = item.folder!;
+            final folderAppPackageNames =
+                folderContents[folder.id] ?? folder.appPackageNames;
             reorderedFolders.add(folder.copyWith(
-              appPackageNames: folderContents[folder.id] ?? [],
+              appPackageNames: folderAppPackageNames,
               order: i,
             ));
+            for (final packageName in folderAppPackageNames) {
+              addAppPackageName(packageName);
+            }
           } else if (item.type == ReorderableItemType.shortcut) {
             final shortcut = item.shortcutInfo!;
             reorderedShortcuts.add(shortcut.copyWith(
               order: i,
             ));
+          } else if (item.type == ReorderableItemType.app) {
+            addAppPackageName(item.id);
           }
         }
 
-        // Get unorganized apps in their new order
-        final appPackageNames = _items
-            .where((item) => item.type == ReorderableItemType.app)
-            .map((item) => item.id)
-            .toList();
-
-        // Get all apps from folders
-        final appsInFolders =
-            currentFolders.expand((folder) => folder.appPackageNames).toList();
-
-        final allAppPackageNames =
-            {...appsInFolders, ...appPackageNames}.toList();
+        for (final packageName in previousSelectedApps) {
+          addAppPackageName(packageName);
+        }
 
         // Save the updated data
         final foldersJson =
@@ -424,16 +430,138 @@ class _ReorderAppsScreenState extends State<ReorderAppsScreen> {
             Text(
               _errorMessage ?? AppLocalizations.of(context)!.errorLoadingApps,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 16, color: theme.colorScheme.onSurface),
+              style:
+                  TextStyle(fontSize: 16, color: theme.colorScheme.onSurface),
             ),
             const SizedBox(height: 16),
             TextButton(
               onPressed: _loadData,
-              child: Text(AppLocalizations.of(context)!.save, style: TextStyle(color: theme.colorScheme.onSurface)),
+              child: Text(AppLocalizations.of(context)!.save,
+                  style: TextStyle(color: theme.colorScheme.onSurface)),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  String _shortcutIconPath(ShortcutInfo shortcut) {
+    return '$_appDocsDirPath/shortcut_icons/${shortcut.packageName}_${shortcut.id}.png';
+  }
+
+  String _shortcutSourceIconPath(String packageName) {
+    return '$_appDocsDirPath/shortcut_source_icons/$packageName.png';
+  }
+
+  Widget _buildShortcutIcon(ShortcutInfo shortcut, ThemeData theme) {
+    final iconSize = _appIconSize * 0.9;
+    final iconPath = _appDocsDirPath != null ? _shortcutIconPath(shortcut) : '';
+    final file = File(iconPath);
+    final baseIcon = iconPath.isNotEmpty && file.existsSync()
+        ? Image.file(
+            file,
+            width: iconSize,
+            height: iconSize,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+          )
+        : Icon(
+            Icons.link,
+            size: iconSize * 0.7,
+            color: theme.colorScheme.onSurface,
+          );
+    final renderedIcon = _colorMode
+        ? baseIcon
+        : ColorFiltered(
+            colorFilter: const ColorFilter.matrix([
+              0.2126,
+              0.7152,
+              0.0722,
+              0,
+              0,
+              0.2126,
+              0.7152,
+              0.0722,
+              0,
+              0,
+              0.2126,
+              0.7152,
+              0.0722,
+              0,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+            ]),
+            child: baseIcon,
+          );
+
+    return _buildShortcutIconWithSourceBadge(
+      shortcut,
+      renderedIcon,
+      iconSize,
+    );
+  }
+
+  Widget _buildShortcutIconWithSourceBadge(
+    ShortcutInfo shortcut,
+    Widget baseIcon,
+    double iconSize,
+  ) {
+    final sourceIconPath = _appDocsDirPath != null
+        ? _shortcutSourceIconPath(shortcut.packageName)
+        : '';
+    final sourceIconFile = File(sourceIconPath);
+    final hasSourceIcon =
+        sourceIconPath.isNotEmpty && sourceIconFile.existsSync();
+    final badgeSize = (iconSize * 0.68).clamp(7.0, 15.0).toDouble();
+    final badgeContainerSize = badgeSize + 3;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        ClipOval(
+          child: SizedBox(
+            width: iconSize,
+            height: iconSize,
+            child: baseIcon,
+          ),
+        ),
+        if (hasSourceIcon)
+          Positioned(
+            right: -5,
+            bottom: -7,
+            child: Container(
+              width: badgeContainerSize,
+              height: badgeContainerSize,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+                border: Border.all(color: Colors.white, width: 1.0),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withAlpha(45),
+                    blurRadius: 2,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: ClipOval(
+                child: Image.file(
+                  sourceIconFile,
+                  width: badgeSize,
+                  height: badgeSize,
+                  cacheHeight: badgeSize.ceil(),
+                  cacheWidth: badgeSize.ceil(),
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -447,32 +575,9 @@ class _ReorderAppsScreenState extends State<ReorderAppsScreen> {
         color: theme.colorScheme.onSurface.withAlpha(200),
         size: _appIconSize * 0.7,
       );
-    } else if (item.type == ReorderableItemType.shortcut && item.shortcutInfo != null) {
-      final iconPath = '$_appDocsDirPath/shortcut_icons/${item.shortcutInfo!.packageName}_${item.shortcutInfo!.id}.png';
-      final file = File(iconPath);
-      final imageWidget = file.existsSync()
-          ? Image.file(
-              file,
-              width: _appIconSize,
-              height: _appIconSize,
-              fit: BoxFit.cover,
-            )
-          : Icon(
-              Icons.link,
-              size: _appIconSize * 0.7,
-              color: theme.colorScheme.onSurface,
-            );
-      leadingIcon = _colorMode
-          ? imageWidget
-          : ColorFiltered(
-              colorFilter: const ColorFilter.matrix([
-                0.2126, 0.7152, 0.0722, 0, 0,
-                0.2126, 0.7152, 0.0722, 0, 0,
-                0.2126, 0.7152, 0.0722, 0, 0,
-                0,      0,      0,      1, 0,
-              ]),
-              child: imageWidget,
-            );
+    } else if (item.type == ReorderableItemType.shortcut &&
+        item.shortcutInfo != null) {
+      leadingIcon = _buildShortcutIcon(item.shortcutInfo!, theme);
     } else if (item.appInfo?.icon != null) {
       final imageWidget = Image.memory(
         item.appInfo!.icon!,
@@ -596,18 +701,17 @@ class _ReorderAppsScreenState extends State<ReorderAppsScreen> {
                         ? Center(
                             child: Text(
                               AppLocalizations.of(context)!.noAppsSelected,
-                              style: TextStyle(fontSize: 16, color: theme.colorScheme.onSurface),
+                              style: TextStyle(
+                                  fontSize: 16,
+                                  color: theme.colorScheme.onSurface),
                             ),
                           )
                         : ReorderableListView.builder(
                             itemCount: _items.length,
                             itemBuilder: (context, index) =>
                                 _buildListItem(_items[index]),
-                            onReorder: (oldIndex, newIndex) async {
+                            onReorderItem: (oldIndex, newIndex) async {
                               setState(() {
-                                if (oldIndex < newIndex) {
-                                  newIndex -= 1;
-                                }
                                 final item = _items.removeAt(oldIndex);
                                 _items.insert(newIndex, item);
 

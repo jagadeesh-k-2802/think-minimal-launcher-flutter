@@ -194,6 +194,36 @@
     "description": "Title for rename app dialog"
   },
 
+  "shortcut": "Shortcut",
+  "@shortcut": {
+    "description": "Label identifying a launcher shortcut"
+  },
+
+  "shortcutFromApp": "Shortcut from {appName}",
+  "@shortcutFromApp": {
+    "description": "Label identifying the app that published a launcher shortcut",
+    "placeholders": {
+      "appName": {
+        "type": "String"
+      }
+    }
+  },
+
+  "renameShortcut": "Rename Shortcut",
+  "@renameShortcut": {
+    "description": "Title for rename shortcut dialog and shortcut menu action"
+  },
+
+  "resetShortcutName": "Reset Shortcut Name",
+  "@resetShortcutName": {
+    "description": "Shortcut menu action to restore the original shortcut label"
+  },
+
+  "removeShortcut": "Remove Shortcut",
+  "@removeShortcut": {
+    "description": "Shortcut menu action to remove a pinned shortcut"
+  },
+
   "moveToFolder": "Move to Folder",
   "@moveToFolder": {
     "description": "Title for move to folder dialog"
@@ -252,6 +282,11 @@
   "reOrderApps": "Reorder Apps",
   "@reOrderApps": {
     "description": "Title for reorder apps"
+  },
+
+  "reorderHomeScreen": "Reorder Home Screen",
+  "@reorderHomeScreen": {
+    "description": "Shortcut menu action to open the home screen reorder flow"
   },
 
   "errorSavingSettings": "Error saving settings",

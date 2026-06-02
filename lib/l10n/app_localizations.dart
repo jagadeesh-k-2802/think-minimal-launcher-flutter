@@ -317,6 +317,36 @@ abstract class AppLocalizations {
   /// **'Rename App'**
   String get renameApp;
 
+  /// Label identifying a launcher shortcut
+  ///
+  /// In en, this message translates to:
+  /// **'Shortcut'**
+  String get shortcut;
+
+  /// Label identifying the app that published a launcher shortcut
+  ///
+  /// In en, this message translates to:
+  /// **'Shortcut from {appName}'**
+  String shortcutFromApp(String appName);
+
+  /// Title for rename shortcut dialog and shortcut menu action
+  ///
+  /// In en, this message translates to:
+  /// **'Rename Shortcut'**
+  String get renameShortcut;
+
+  /// Shortcut menu action to restore the original shortcut label
+  ///
+  /// In en, this message translates to:
+  /// **'Reset Shortcut Name'**
+  String get resetShortcutName;
+
+  /// Shortcut menu action to remove a pinned shortcut
+  ///
+  /// In en, this message translates to:
+  /// **'Remove Shortcut'**
+  String get removeShortcut;
+
   /// Title for move to folder dialog
   ///
   /// In en, this message translates to:
@@ -376,6 +406,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Reorder Apps'**
   String get reOrderApps;
+
+  /// Shortcut menu action to open the home screen reorder flow
+  ///
+  /// In en, this message translates to:
+  /// **'Reorder Home Screen'**
+  String get reorderHomeScreen;
 
   /// Error message shown when settings fail to save
   ///

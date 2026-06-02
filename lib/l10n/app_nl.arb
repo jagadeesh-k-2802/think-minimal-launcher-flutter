@@ -194,6 +194,36 @@
     "description": "Title for rename app dialog"
   },
 
+  "shortcut": "Snelkoppeling",
+  "@shortcut": {
+    "description": "Label identifying a launcher shortcut"
+  },
+
+  "shortcutFromApp": "Snelkoppeling van {appName}",
+  "@shortcutFromApp": {
+    "description": "Label identifying the app that published a launcher shortcut",
+    "placeholders": {
+      "appName": {
+        "type": "String"
+      }
+    }
+  },
+
+  "renameShortcut": "Snelkoppeling hernoemen",
+  "@renameShortcut": {
+    "description": "Title for rename shortcut dialog and shortcut menu action"
+  },
+
+  "resetShortcutName": "Naam van snelkoppeling resetten",
+  "@resetShortcutName": {
+    "description": "Shortcut menu action to restore the original shortcut label"
+  },
+
+  "removeShortcut": "Snelkoppeling verwijderen",
+  "@removeShortcut": {
+    "description": "Shortcut menu action to remove a pinned shortcut"
+  },
+
   "moveToFolder": "Verplaats naar map",
   "@moveToFolder": {
     "description": "Title for move to folder dialog"
@@ -252,6 +282,11 @@
   "reOrderApps": "Apps en mappen opnieuw ordenen",
   "@reOrderApps": {
     "description": "Title for reorder apps"
+  },
+
+  "reorderHomeScreen": "Startscherm opnieuw ordenen",
+  "@reorderHomeScreen": {
+    "description": "Shortcut menu action to open the home screen reorder flow"
   },
 
   "errorSavingSettings": "Fout bij opslaan van instellingen",

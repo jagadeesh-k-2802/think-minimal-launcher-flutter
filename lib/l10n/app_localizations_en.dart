@@ -122,6 +122,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get renameApp => 'Rename App';
 
   @override
+  String get shortcut => 'Shortcut';
+
+  @override
+  String shortcutFromApp(String appName) {
+    return 'Shortcut from $appName';
+  }
+
+  @override
+  String get renameShortcut => 'Rename Shortcut';
+
+  @override
+  String get resetShortcutName => 'Reset Shortcut Name';
+
+  @override
+  String get removeShortcut => 'Remove Shortcut';
+
+  @override
   String get moveToFolder => 'Move to Folder';
 
   @override
@@ -154,6 +171,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reOrderApps => 'Reorder Apps';
+
+  @override
+  String get reorderHomeScreen => 'Reorder Home Screen';
 
   @override
   String get errorSavingSettings => 'Error saving settings';

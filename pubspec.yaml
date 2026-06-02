@@ -1,7 +1,7 @@
 name: think_launcher
 description: A minimalist launcher for OLED & E-Ink screens
 publish_to: 'none'
-version: 1.21.0+3
+version: 1.22.0+4
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -13,12 +13,12 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
-  installed_apps: ^2.1.0
+  installed_apps: 2.1.0
   shared_preferences: ^2.2.2
   intl: ^0.20.2
   cupertino_icons: ^1.0.2
   reorderable_grid_view: ^2.2.6
-  battery_plus: ^5.0.3
+  battery_plus: ^7.0.0
   http: ^1.2.1
   geolocator: ^11.0.0
   android_intent_plus: ^5.3.0
@@ -26,7 +26,7 @@ dependencies:
   palette_generator: ^0.3.3+3
   path_provider: ^2.1.4
   file_picker: ^8.0.6
-  package_info_plus: ^8.0.0
+  package_info_plus: ^9.0.1
   url_launcher: ^6.3.0
 
   notification_listener_service:
