@@ -635,6 +635,12 @@ abstract class AppLocalizations {
   /// **'Wallpaper blur'**
   String get wallpaperBlur;
 
+  /// Label for wallpaper opacity slider
+  ///
+  /// In en, this message translates to:
+  /// **'Wallpaper opacity'**
+  String get wallpaperOpacity;
+
   /// Label for Scroll to top
   ///
   /// In en, this message translates to:

@@ -479,6 +479,9 @@
   "wallpaperBlur": "Wallpaper blur",
   "@wallpaperBlur": { "description": "Label for wallpaper blur slider" },
 
+  "wallpaperOpacity": "Wallpaper opacity",
+  "@wallpaperOpacity": { "description": "Label for wallpaper opacity slider" }
+
   "scrollToTop": "Auto scroll on folder close",
   "@scrollToTop": { "description": "Label for Scroll to top" },
 

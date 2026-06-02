@@ -293,6 +293,9 @@ class AppLocalizationsNl extends AppLocalizations {
   String get wallpaperBlur => 'Achtergrond vervagen';
 
   @override
+  String get wallpaperOpacity => 'Achtergrond transparantie';
+
+  @override
   String get scrollToTop => 'Automatisch scrollen bij het sluiten van een map';
 
   @override

@@ -5,8 +5,11 @@ import 'package:think_launcher/models/app_info.dart';
 import 'package:think_launcher/services/icon_pack_service.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'dart:convert';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import 'package:think_launcher/l10n/app_localizations.dart';
 import 'package:think_launcher/models/reorderable_item.dart';
+import 'package:think_launcher/models/shortcut_info.dart';
 
 class ReorderAppsScreen extends StatefulWidget {
   final SharedPreferences prefs;
@@ -22,6 +25,8 @@ class _ReorderAppsScreenState extends State<ReorderAppsScreen> {
   late List<ReorderableItem> _items;
   final Map<String, AppInfo> _appInfoCache = {};
   List<Folder> _folders = [];
+  List<ShortcutInfo> _shortcuts = [];
+  String? _appDocsDirPath;
   bool _isLoading = true;
   bool _isSaving = false;
   String? _errorMessage;
@@ -55,6 +60,9 @@ class _ReorderAppsScreenState extends State<ReorderAppsScreen> {
         _isLoading = true;
         _errorMessage = null;
       });
+
+      final docsDir = await getApplicationDocumentsDirectory();
+      _appDocsDirPath = docsDir.path;
 
       await _loadFolders();
       await _preloadAppInfo();
@@ -119,11 +127,15 @@ class _ReorderAppsScreenState extends State<ReorderAppsScreen> {
               .toList();
         });
       } else {
-        // Main screen mode: show folders and unorganized apps in their correct order
+        // Main screen mode: show folders, shortcuts, and unorganized apps in their correct order
         final selectedApps = widget.prefs.getStringList('selectedApps') ?? [];
         final foldersJson = widget.prefs.getString('folders') ?? '[]';
         final List<dynamic> decodedFolders = jsonDecode(foldersJson);
         _folders = decodedFolders.map((f) => Folder.fromJson(f)).toList();
+
+        final shortcutsJson = widget.prefs.getString('shortcuts') ?? '[]';
+        final List<dynamic> decodedShortcuts = jsonDecode(shortcutsJson);
+        _shortcuts = decodedShortcuts.map((s) => ShortcutInfo.fromJson(s)).toList();
 
         // Map packageName → appInfo
         final appMap = _appInfoCache;
@@ -138,22 +150,28 @@ class _ReorderAppsScreenState extends State<ReorderAppsScreen> {
                 !appsInFolders.contains(pkg) && appMap.containsKey(pkg))
             .toList();
 
-        // Sort folders just in case
-        final orderedFolders = [..._folders]
-          ..sort((a, b) => a.order.compareTo(b.order));
+        // Sort folders and shortcuts together by order
+        final List<dynamic> orderedItems = [..._folders, ..._shortcuts];
+        orderedItems.sort((a, b) {
+          int aOrder = a is Folder ? a.order : (a as ShortcutInfo).order;
+          int bOrder = b is Folder ? b.order : (b as ShortcutInfo).order;
+          return aOrder.compareTo(bOrder);
+        });
 
         final List<ReorderableItem> items = [];
 
         int currentIndex = 0;
         int unorganizedIndex = 0;
 
-        for (final folder in orderedFolders) {
-          if (folder.appPackageNames.isEmpty) {
+        for (final item in orderedItems) {
+          int targetOrder = item is Folder ? item.order : (item as ShortcutInfo).order;
+
+          if (item is Folder && item.appPackageNames.isEmpty) {
             continue;
           }
 
-          // Place unorganized apps until reaching this folder’s order
-          while (currentIndex < folder.order &&
+          // Place unorganized apps until reaching this item’s order
+          while (currentIndex < targetOrder &&
               unorganizedIndex < unorganizedApps.length) {
             final pkg = unorganizedApps[unorganizedIndex];
             items.add(
@@ -162,8 +180,12 @@ class _ReorderAppsScreenState extends State<ReorderAppsScreen> {
             currentIndex++;
           }
 
-          // Place the folder itself
-          items.add(ReorderableItem.fromFolder(folder, order: currentIndex));
+          // Place the folder or shortcut
+          if (item is Folder) {
+            items.add(ReorderableItem.fromFolder(item, order: currentIndex));
+          } else if (item is ShortcutInfo) {
+            items.add(ReorderableItem.fromShortcut(item, order: currentIndex));
+          }
           currentIndex++;
         }
 
@@ -175,7 +197,7 @@ class _ReorderAppsScreenState extends State<ReorderAppsScreen> {
           currentIndex++;
         }
 
-        // Final sort (should already be in order, but safe)
+        // Final sort
         setState(() {
           _items = items..sort((a, b) => a.order.compareTo(b.order));
         });
@@ -301,21 +323,35 @@ class _ReorderAppsScreenState extends State<ReorderAppsScreen> {
                 .map((f) => Folder.fromJson(f))
                 .toList();
 
+        final currentShortcuts =
+            (jsonDecode(widget.prefs.getString('shortcuts') ?? '[]') as List)
+                .map((s) => ShortcutInfo.fromJson(s))
+                .toList();
+
         // Create a map of folder ID to its contents
         final folderContents = {
           for (var folder in currentFolders) folder.id: folder.appPackageNames
         };
 
-        // Get the new folder order while preserving their contents
-        final reorderedFolders = _items
-            .where((item) => item.type == ReorderableItemType.folder)
-            .map((item) {
-          final folder = item.folder!;
-          return folder.copyWith(
-            appPackageNames: folderContents[folder.id] ?? [],
-            order: item.order, // Preserve the new order
-          );
-        }).toList();
+        // Go through the reordered items list, update order indices
+        final List<Folder> reorderedFolders = [];
+        final List<ShortcutInfo> reorderedShortcuts = [];
+
+        for (int i = 0; i < _items.length; i++) {
+          final item = _items[i];
+          if (item.type == ReorderableItemType.folder) {
+            final folder = item.folder!;
+            reorderedFolders.add(folder.copyWith(
+              appPackageNames: folderContents[folder.id] ?? [],
+              order: i,
+            ));
+          } else if (item.type == ReorderableItemType.shortcut) {
+            final shortcut = item.shortcutInfo!;
+            reorderedShortcuts.add(shortcut.copyWith(
+              order: i,
+            ));
+          }
+        }
 
         // Get unorganized apps in their new order
         final appPackageNames = _items
@@ -330,18 +366,21 @@ class _ReorderAppsScreenState extends State<ReorderAppsScreen> {
         final allAppPackageNames =
             {...appsInFolders, ...appPackageNames}.toList();
 
-        // Sort folders by their order
-        reorderedFolders.sort((a, b) => a.order.compareTo(b.order));
-
         // Save the updated data
         final foldersJson =
             jsonEncode(reorderedFolders.map((f) => f.toJson()).toList());
         await widget.prefs.setString('folders', foldersJson);
+
+        final shortcutsJson =
+            jsonEncode(reorderedShortcuts.map((s) => s.toJson()).toList());
+        await widget.prefs.setString('shortcuts', shortcutsJson);
+
         await widget.prefs.setStringList('selectedApps', allAppPackageNames);
 
         // Update local state
         setState(() {
           _folders = reorderedFolders;
+          _shortcuts = reorderedShortcuts;
         });
       }
 
@@ -408,6 +447,32 @@ class _ReorderAppsScreenState extends State<ReorderAppsScreen> {
         color: theme.colorScheme.onSurface.withAlpha(200),
         size: _appIconSize * 0.7,
       );
+    } else if (item.type == ReorderableItemType.shortcut && item.shortcutInfo != null) {
+      final iconPath = '$_appDocsDirPath/shortcut_icons/${item.shortcutInfo!.packageName}_${item.shortcutInfo!.id}.png';
+      final file = File(iconPath);
+      final imageWidget = file.existsSync()
+          ? Image.file(
+              file,
+              width: _appIconSize,
+              height: _appIconSize,
+              fit: BoxFit.cover,
+            )
+          : Icon(
+              Icons.link,
+              size: _appIconSize * 0.7,
+              color: theme.colorScheme.onSurface,
+            );
+      leadingIcon = _colorMode
+          ? imageWidget
+          : ColorFiltered(
+              colorFilter: const ColorFilter.matrix([
+                0.2126, 0.7152, 0.0722, 0, 0,
+                0.2126, 0.7152, 0.0722, 0, 0,
+                0.2126, 0.7152, 0.0722, 0, 0,
+                0,      0,      0,      1, 0,
+              ]),
+              child: imageWidget,
+            );
     } else if (item.appInfo?.icon != null) {
       final imageWidget = Image.memory(
         item.appInfo!.icon!,

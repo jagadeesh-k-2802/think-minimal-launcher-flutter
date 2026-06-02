@@ -293,6 +293,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wallpaperBlur => 'Wallpaper blur';
 
   @override
+  String get wallpaperOpacity => 'Wallpaper opacity';
+
+  @override
   String get scrollToTop => 'Auto scroll on folder close';
 
   @override

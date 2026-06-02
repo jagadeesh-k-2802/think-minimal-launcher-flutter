@@ -1,9 +1,11 @@
 import 'package:think_launcher/models/app_info.dart';
 import 'package:think_launcher/models/folder.dart';
+import 'package:think_launcher/models/shortcut_info.dart';
 
 enum ReorderableItemType {
   app,
   folder,
+  shortcut,
 }
 
 class ReorderableItem {
@@ -12,7 +14,8 @@ class ReorderableItem {
   final ReorderableItemType type;
   final AppInfo? appInfo;
   final Folder? folder;
-  final int order; // New field to track item's order in the list
+  final ShortcutInfo? shortcutInfo;
+  final int order; // Tracks item's order in the list
 
   ReorderableItem({
     required this.id,
@@ -21,6 +24,7 @@ class ReorderableItem {
     required this.order,
     this.appInfo,
     this.folder,
+    this.shortcutInfo,
   });
 
   factory ReorderableItem.fromApp(AppInfo app, {required int order}) {
@@ -43,6 +47,16 @@ class ReorderableItem {
     );
   }
 
+  factory ReorderableItem.fromShortcut(ShortcutInfo shortcut, {required int order}) {
+    return ReorderableItem(
+      id: '${shortcut.packageName}_${shortcut.id}',
+      name: shortcut.name,
+      type: ReorderableItemType.shortcut,
+      order: order,
+      shortcutInfo: shortcut,
+    );
+  }
+
   ReorderableItem copyWith({
     String? id,
     String? name,
@@ -50,6 +64,7 @@ class ReorderableItem {
     int? order,
     AppInfo? appInfo,
     Folder? folder,
+    ShortcutInfo? shortcutInfo,
   }) {
     return ReorderableItem(
       id: id ?? this.id,
@@ -58,6 +73,7 @@ class ReorderableItem {
       order: order ?? this.order,
       appInfo: appInfo ?? this.appInfo,
       folder: folder ?? this.folder,
+      shortcutInfo: shortcutInfo ?? this.shortcutInfo,
     );
   }
 
@@ -69,6 +85,9 @@ class ReorderableItem {
     }
     if (type == ReorderableItemType.folder && folder != null) {
       return folder!.name;
+    }
+    if (type == ReorderableItemType.shortcut && shortcutInfo != null) {
+      return shortcutInfo!.name;
     }
     return name;
   }

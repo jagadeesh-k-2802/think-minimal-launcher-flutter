@@ -479,6 +479,9 @@
   "wallpaperBlur": "Achtergrond vervagen",
   "@wallpaperBlur": { "description": "Label voor schuifregelaar voor achtergrondvervaging" },
 
+  "wallpaperOpacity": "Achtergrond transparantie",
+  "@wallpaperOpacity": { "description": "Label voor schuifregelaar voor achtergrondtransparantie" }
+
   "scrollToTop": "Automatisch scrollen bij het sluiten van een map",
   "@scrollToTop": { "description": "Label for Scroll to top" },
 
