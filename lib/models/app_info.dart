@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 
 class AppInfo {
+  static const Object _unset = Object();
+
   final String name;
   final Uint8List? icon;
   final String packageName;
@@ -30,7 +32,7 @@ class AppInfo {
     String? versionName,
     int? versionCode,
     int? installedTimestamp,
-    String? customName,
+    Object? customName = _unset,
   }) {
     return AppInfo(
       name: name ?? this.name,
@@ -39,7 +41,9 @@ class AppInfo {
       versionName: versionName ?? this.versionName,
       versionCode: versionCode ?? this.versionCode,
       installedTimestamp: installedTimestamp ?? this.installedTimestamp,
-      customName: customName ?? this.customName,
+      customName: identical(customName, _unset)
+          ? this.customName
+          : customName as String?,
     );
   }
 

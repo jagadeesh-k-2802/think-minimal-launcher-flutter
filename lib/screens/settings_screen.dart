@@ -49,6 +49,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? errorMessage;
   String? wallpaperPath;
   double wallpaperBlur = 0.0; // 0 = no blur when no wallpaper; 1-10 when set
+  double wallpaperOpacity = 1.0; // 0.0 = completely transparent, 1.0 = fully opaque
   String? weatherAppPackageName;
   AppAlignment appAlignment = AppAlignment.left;
   AppThemeMode appTheme = AppThemeMode.auto;
@@ -85,6 +86,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (wallpaperPath != null && wallpaperBlur < 1.0) {
         wallpaperBlur = 1.0;
       }
+      wallpaperOpacity = widget.prefs.getDouble('wallpaperOpacity') ?? 1.0;
       weatherAppPackageName = widget.prefs.getString('weatherAppPackageName');
       appAlignment =
           appAlignmentFromStorage(widget.prefs.getString('appAlignment'));
@@ -121,6 +123,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         await widget.prefs.setString('wallpaperPath', wallpaperPath!);
       }
       await widget.prefs.setDouble('wallpaperBlur', wallpaperBlur);
+      await widget.prefs.setDouble('wallpaperOpacity', wallpaperOpacity);
       if (weatherAppPackageName == null) {
         await widget.prefs.remove('weatherAppPackageName');
       } else {
@@ -420,6 +423,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         'showStatusBar': prefs.getBool('showStatusBar') ?? false,
         'showFolderChevron': prefs.getBool('showFolderChevron') ?? true,
         'wallpaperBlur': prefs.getDouble('wallpaperBlur') ?? 0.0,
+        'wallpaperOpacity': prefs.getDouble('wallpaperOpacity') ?? 1.0,
         'appAlignment':
             prefs.getString('appAlignment') ?? AppAlignment.left.storageKey,
         'appTheme':
@@ -613,6 +617,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final double? vWallpaperBlur = getDoubleOrNull('wallpaperBlur');
       if (vWallpaperBlur != null) {
         await prefs.setDouble('wallpaperBlur', vWallpaperBlur);
+      }
+
+      final double? vWallpaperOpacity = getDoubleOrNull('wallpaperOpacity');
+      if (vWallpaperOpacity != null) {
+        await prefs.setDouble('wallpaperOpacity', vWallpaperOpacity);
       }
 
       final String? vAppAlignment = getStringOrNull('appAlignment');
@@ -877,6 +886,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   setState(() {
                                     wallpaperPath = null;
                                     wallpaperBlur = 0.0;
+                                    wallpaperOpacity = 1.0;
                                   });
                                   await _saveSettings();
                                 },
@@ -911,6 +921,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 if (wallpaperBlur == 0.0) {
                                   wallpaperBlur = 3.0;
                                 }
+                                wallpaperOpacity = 1.0;
                               });
                               await _saveSettings();
                             } catch (e) {
@@ -987,7 +998,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                             theme.colorScheme.onSurface,
                                         overlayColor: Colors.transparent,
                                         showValueIndicator:
-                                            ShowValueIndicator.always,
+                                            ShowValueIndicator.onDrag,
                                       ),
                                       child: Slider(
                                         value: wallpaperBlur,
@@ -1012,6 +1023,103 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                               wallpaperBlur =
                                                   (wallpaperBlur + 1)
                                                       .clamp(1.0, 10.0);
+                                            });
+                                            _saveSettings();
+                                          }
+                                        : null,
+                                    icon: const Icon(Icons.add),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            16.0,
+                            8.0,
+                            16.0,
+                            8.0,
+                          ),
+                          child: Text(
+                            AppLocalizations.of(context)!.wallpaperOpacity,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  IconButton(
+                                    onPressed: wallpaperOpacity > 0.1
+                                        ? () {
+                                            setState(() {
+                                              wallpaperOpacity =
+                                                  (wallpaperOpacity - 0.1)
+                                                      .clamp(0.0, 1.0);
+                                            });
+                                            _saveSettings();
+                                          }
+                                        : null,
+                                    icon: const Icon(Icons.remove),
+                                  ),
+                                  Expanded(
+                                    child: SliderTheme(
+                                      data: SliderTheme.of(context).copyWith(
+                                        overlayShape:
+                                            SliderComponentShape.noOverlay,
+                                        valueIndicatorColor:
+                                            Colors.transparent,
+                                        valueIndicatorTextStyle: TextStyle(
+                                          color: theme.colorScheme.onSurface,
+                                        ),
+                                        thumbShape:
+                                            const RoundSliderThumbShape(
+                                          enabledThumbRadius: 12,
+                                          elevation: 0,
+                                          pressedElevation: 0,
+                                        ),
+                                        trackHeight: 2,
+                                        activeTrackColor:
+                                            theme.colorScheme.onSurface,
+                                        inactiveTrackColor:
+                                            theme.colorScheme.onSurface,
+                                        thumbColor:
+                                            theme.colorScheme.onSurface,
+                                        overlayColor: Colors.transparent,
+                                        showValueIndicator:
+                                            ShowValueIndicator.onDrag,
+                                      ),
+                                      child: Slider(
+                                        value: wallpaperOpacity,
+                                        min: 0.0,
+                                        max: 1.0,
+                                        divisions: 10,
+                                        label:
+                                            '${(wallpaperOpacity * 100).toStringAsFixed(0)}%',
+                                        onChanged: (value) {
+                                          setState(() {
+                                            wallpaperOpacity = value;
+                                          });
+                                          _saveSettings();
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    onPressed: wallpaperOpacity < 1.0
+                                        ? () {
+                                            setState(() {
+                                              wallpaperOpacity =
+                                                  (wallpaperOpacity + 0.1)
+                                                      .clamp(0.0, 1.0);
                                             });
                                             _saveSettings();
                                           }

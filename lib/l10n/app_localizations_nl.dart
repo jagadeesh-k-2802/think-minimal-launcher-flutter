@@ -122,6 +122,23 @@ class AppLocalizationsNl extends AppLocalizations {
   String get renameApp => 'App hernoemen';
 
   @override
+  String get shortcut => 'Snelkoppeling';
+
+  @override
+  String shortcutFromApp(String appName) {
+    return 'Snelkoppeling van $appName';
+  }
+
+  @override
+  String get renameShortcut => 'Snelkoppeling hernoemen';
+
+  @override
+  String get resetShortcutName => 'Naam van snelkoppeling resetten';
+
+  @override
+  String get removeShortcut => 'Snelkoppeling verwijderen';
+
+  @override
   String get moveToFolder => 'Verplaats naar map';
 
   @override
@@ -154,6 +171,9 @@ class AppLocalizationsNl extends AppLocalizations {
 
   @override
   String get reOrderApps => 'Apps en mappen opnieuw ordenen';
+
+  @override
+  String get reorderHomeScreen => 'Startscherm opnieuw ordenen';
 
   @override
   String get errorSavingSettings => 'Fout bij opslaan van instellingen';
@@ -291,6 +311,9 @@ class AppLocalizationsNl extends AppLocalizations {
 
   @override
   String get wallpaperBlur => 'Achtergrond vervagen';
+
+  @override
+  String get wallpaperOpacity => 'Achtergrond transparantie';
 
   @override
   String get scrollToTop => 'Automatisch scrollen bij het sluiten van een map';
